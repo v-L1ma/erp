@@ -22,6 +22,7 @@ type ProductForm = {
   stock: number
   minStock: number
   price: number
+  image: string
 }
 
 const emptyForm: ProductForm = {
@@ -30,7 +31,8 @@ const emptyForm: ProductForm = {
   category: 'Informática',
   stock: 10,
   minStock: 5,
-  price: 0
+  price: 0,
+  image: ''
 }
 
 export function InventoryPage() {
@@ -71,7 +73,8 @@ export function InventoryPage() {
       category: product.category || 'Outros',
       stock: product.stock,
       minStock: product.minStock || 5,
-      price: product.price || 0
+      price: product.price || 0,
+      image: product.image || ''
     })
     setError('')
     setIsModalOpen(true)
@@ -140,6 +143,7 @@ export function InventoryPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-surface-warm text-[11px] uppercase tracking-[0.18em] text-muted">
               <tr>
+                <th className="px-4 py-3"></th>
                 <th className="px-4 py-3">Produto</th>
                 <th className="px-4 py-3">SKU</th>
                 <th className="px-4 py-3">Categoria</th>
@@ -153,7 +157,7 @@ export function InventoryPage() {
             <tbody className="divide-y divide-border-soft">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted">
                     Nenhum produto encontrado. Clique em "+ Novo Produto" para cadastrar.
                   </td>
                 </tr>
@@ -175,6 +179,22 @@ export function InventoryPage() {
 
                   return (
                     <tr key={product.id} className="hover:bg-surface">
+                      <td className="px-4 py-3">
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="h-10 w-10 rounded-md object-cover"
+                            onError={(event) => {
+                              (event.target as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-surface text-xs text-muted">
+                            -
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 font-semibold">{product.name}</td>
                       <td className="px-4 py-3 font-mono text-xs text-muted">
                         {product.sku || '-'}
@@ -300,6 +320,15 @@ export function InventoryPage() {
                   onChange={(event) =>
                     setForm({ ...form, price: Number(event.target.value) })
                   }
+                  className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted">URL da Imagem</label>
+                <input
+                  value={form.image}
+                  onChange={(event) => setForm({ ...form, image: event.target.value })}
+                  placeholder="https://exemplo.com/imagem.jpg"
                   className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
               </div>

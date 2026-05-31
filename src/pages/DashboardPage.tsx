@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { useErp } from '../state/erp'
 import {
@@ -8,6 +9,11 @@ import {
   formatNumber
 } from '../utils/format'
 
+const MONTHS = [
+  'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
 export function DashboardPage() {
   const { state } = useErp()
   const today = new Date()
@@ -15,6 +21,14 @@ export function DashboardPage() {
   const yesterday = new Date()
   yesterday.setDate(today.getDate() - 1)
   const yesterdayKey = dateKey(yesterday)
+
+  const [selectedMonth, setSelectedMonth] = useState(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  )
+
+  const monthOrders = state.orders.filter((order) =>
+    dateKey(order.date).startsWith(selectedMonth)
+  )
 
   const todayOrders = state.orders.filter((order) => dateKey(order.date) === todayKey)
   const yesterdayOrders = state.orders.filter(
@@ -45,6 +59,14 @@ export function DashboardPage() {
     (product) => product.stock <= (product.minStock || 5)
   )
 
+  const monthRevenue = monthOrders.reduce((sum, order) => sum + order.total, 0)
+  const monthExpenses = state.transactions
+    .filter((tx) => tx.type === 'despesa' && dateKey(tx.date).startsWith(selectedMonth))
+    .reduce((sum, tx) => sum + tx.amount, 0)
+  const monthPendingValue = monthOrders
+    .filter((order) => order.status === 'pendente')
+    .reduce((sum, order) => sum + order.total, 0)
+
   const chartDays = Array.from({ length: 7 }, (_, index) => {
     const date = new Date()
     date.setDate(today.getDate() - (6 - index))
@@ -57,7 +79,7 @@ export function DashboardPage() {
   const maxValue = Math.max(...chartDays.map((day) => day.value), 1)
 
   const activities = [] as Array<{ text: string; time: string; tone: string }>
-  state.orders
+  monthOrders
     .slice(-10)
     .reverse()
     .forEach((order) => {
@@ -76,14 +98,52 @@ export function DashboardPage() {
     })
   })
 
-  const recentOrders = state.orders.slice(-10).reverse()
+  const recentOrders = monthOrders.slice(-10).reverse()
+  const monthLabel = selectedMonth
+    ? `${MONTHS[Number(selectedMonth.slice(5, 7)) - 1]} ${selectedMonth.slice(0, 4)}`
+    : ''
+
+  const productSales = new Map<string, { name: string; qty: number; total: number }>()
+  const deliveredOrders = monthOrders.filter((o) => o.status === 'entregue' || o.status === 'pago')
+  deliveredOrders.forEach((order) => {
+    order.items.forEach((item) => {
+      const existing = productSales.get(item.productId)
+      if (existing) {
+        existing.qty += item.qty
+        existing.total += item.price * item.qty
+      } else {
+        productSales.set(item.productId, { name: item.name, qty: item.qty, total: item.price * item.qty })
+      }
+    })
+  })
+  const topProducts = [...productSales.entries()]
+    .sort((a, b) => b[1].qty - a[1].qty)
+    .slice(0, 5)
 
   return (
     <div className="min-h-screen">
-      <PageHeader title="Dashboard" meta="Hoje" />
+      <PageHeader
+        title="Dashboard"
+        actions={
+          <div className="flex items-center gap-2">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-md border border-border bg-base px-3 py-1.5 text-xs"
+            />
+            <button
+              onClick={() => window.print()}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:border-fg print:hidden"
+            >
+              Exportar Relatorio
+            </button>
+          </div>
+        }
+      />
 
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="kpi-card p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted">
               Faturamento Hoje
@@ -96,13 +156,27 @@ export function DashboardPage() {
             </p>
           </div>
           <div className="kpi-card p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Pedidos</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Pedidos Hoje</p>
             <p className="mt-2 text-2xl font-semibold text-fg">
               {formatNumber(todayOrders.length)}
             </p>
             <p className={`mt-1 text-xs ${ordersChange >= 0 ? 'text-success' : 'text-danger'}`}>
               {ordersChangeLabel}
             </p>
+          </div>
+          <div className="kpi-card p-4">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Receita do Mes</p>
+            <p className="mt-2 text-2xl font-semibold text-success">
+              {formatCurrency(monthRevenue)}
+            </p>
+            <p className="mt-1 text-xs text-muted">{monthLabel}</p>
+          </div>
+          <div className="kpi-card p-4">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted">A Receber</p>
+            <p className="mt-2 text-2xl font-semibold text-warn">
+              {formatCurrency(monthPendingValue)}
+            </p>
+            <p className="mt-1 text-xs text-muted">Pedidos pendentes</p>
           </div>
           <div className="kpi-card p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted">
@@ -126,7 +200,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="panel-card p-5">
             <h3 className="text-sm font-semibold">Faturamento dos Ultimos 7 Dias</h3>
             <div className="mt-4 flex h-32 items-end gap-2">
@@ -146,6 +220,77 @@ export function DashboardPage() {
               })}
             </div>
           </div>
+
+          <div className="panel-card p-5">
+            <h3 className="text-sm font-semibold">Receitas vs Despesas</h3>
+            <div className="mt-4 flex items-center justify-center gap-6">
+              {monthRevenue + monthExpenses > 0 ? (
+                <>
+                  <svg width="140" height="140" viewBox="0 0 36 36" className="-rotate-90">
+                    {(() => {
+                      const total = monthRevenue + monthExpenses
+                      const revPct = (monthRevenue / total) * 100
+                      const expPct = (monthExpenses / total) * 100
+                      const revAngle = (revPct / 100) * 360
+                      const expAngle = (expPct / 100) * 360
+                      const revRad = ((revAngle - 90) * Math.PI) / 180
+                      const expRad = ((revAngle + expAngle - 90) * Math.PI) / 180
+                      const r = 15.915
+
+                      const revX = 18 + r * Math.cos(revRad)
+                      const revY = 18 + r * Math.sin(revRad)
+                      const expX = 18 + r * Math.cos(expRad)
+                      const expY = 18 + r * Math.sin(expRad)
+
+                      const revLargeArc = revAngle > 180 ? 1 : 0
+                      const expLargeArc = expAngle > 180 ? 1 : 0
+
+                      return (
+                        <>
+                          {revPct > 0 && (
+                            <path
+                              d={`M18 ${18 - r} A${r} ${r} 0 ${revLargeArc} 1 ${revX} ${revY}`}
+                              fill="none"
+                              stroke="var(--success)"
+                              strokeWidth="3.8"
+                            />
+                          )}
+                          {expPct > 0 && (
+                            <path
+                              d={`M${revX} ${revY} A${r} ${r} 0 ${expLargeArc} 1 ${expX} ${expY}`}
+                              fill="none"
+                              stroke="var(--danger)"
+                              strokeWidth="3.8"
+                            />
+                          )}
+                          {revPct > 0 && expPct === 0 && (
+                            <circle cx="18" cy="18" r={r} fill="none" stroke="var(--success)" strokeWidth="3.8" />
+                          )}
+                        </>
+                      )
+                    })()}
+                    <circle cx="18" cy="18" r="11" fill="var(--bg)" />
+                  </svg>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-success"></span>
+                      <span>Receitas: {formatCurrency(monthRevenue)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-danger"></span>
+                      <span>Despesas: {formatCurrency(monthExpenses)}</span>
+                    </div>
+                    <div className="pt-1 font-semibold text-fg">
+                      Saldo: {formatCurrency(monthRevenue - monthExpenses)}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-8 text-sm text-muted">Nenhum dado no periodo</div>
+              )}
+            </div>
+          </div>
+
           <div className="panel-card p-5">
             <h3 className="text-sm font-semibold">Atividades Recentes</h3>
             <div className="mt-4 space-y-3">
@@ -174,6 +319,45 @@ export function DashboardPage() {
                 ))
               )}
             </div>
+          </div>
+        </div>
+
+        <div className="panel-card mt-6 p-5">
+          <h3 className="text-sm font-semibold">Produtos Mais Vendidos</h3>
+          <div className="mt-4">
+            {topProducts.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted">
+                Nenhuma venda concluida no periodo
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topProducts.map(([id, data], index) => {
+                  const maxQty = topProducts[0][1].qty
+                  const pct = (data.qty / maxQty) * 100
+                  return (
+                    <div key={id} className="flex items-center gap-3">
+                      <span className="w-5 text-center text-xs font-semibold text-muted">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{data.name}</span>
+                          <span className="font-mono text-xs text-muted">
+                            {data.qty} uni. / {formatCurrency(data.total)}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-border-soft">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${pct}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 

@@ -32,6 +32,31 @@
   --elev-raised: 0 12px 32px rgba(0, 0, 0, 0.08);
 }
 
+html.dark {
+  --bg: #1c1c1e;
+  --surface: #2c2c2e;
+  --surface-warm: #3a3a3c;
+  --fg: #f5f5f7;
+  --fg-2: #d1d1d6;
+  --muted: #98989d;
+  --meta: #7c7c82;
+  --border: #48484a;
+  --border-soft: #38383a;
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-on: #ffffff;
+  --success: #30d158;
+  --warn: #ffd60a;
+  --danger: #ff453a;
+}
+
+html.dark body {
+  background:
+    radial-gradient(1200px 600px at 100% -20%, rgba(10, 132, 255, 0.06), transparent 50%),
+    radial-gradient(1000px 500px at -10% 20%, rgba(48, 209, 88, 0.04), transparent 50%),
+    var(--surface);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -105,5 +130,16 @@ button {
   .status-tag.danger {
     background: color-mix(in oklab, var(--danger) 12%, transparent);
     color: var(--danger);
+  }
+}
+
+@media print {
+  aside,
+  .sticky,
+  .print\:hidden {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
   }
 }

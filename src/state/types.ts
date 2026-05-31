@@ -10,6 +10,7 @@ export interface Product {
   stock: number
   minStock: number
   price: number
+  image?: string
   createdAt: string
 }
 

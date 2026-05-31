@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
+import { Toast } from '../components/Toast'
 import { useErp } from '../state/erp'
 import { dateKey, formatCurrency, formatNumber } from '../utils/format'
 
 export function OverviewPage() {
-  const { state } = useErp()
+  const { state, services } = useErp()
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const todayKey = dateKey(new Date())
   const monthKey = todayKey.slice(0, 7)
 
@@ -211,25 +214,46 @@ export function OverviewPage() {
           </Link>
         </section>
 
-        <section className="mt-10">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-            Status do Sistema
-          </h3>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {['Estoque Online', 'Vendas Online', 'Financeiro Online', 'Integracao Ativa'].map(
-              (label) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium"
-                >
-                  <span className="h-2 w-2 rounded-full bg-success"></span>
-                  {label}
-                </span>
-              )
+        <section className="mt-10 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+              Status do Sistema
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {['Estoque Online', 'Vendas Online', 'Financeiro Online', 'Integracao Ativa'].map(
+                (label) => (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-success"></span>
+                    {label}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {state.products.length === 0 && (
+              <button
+                onClick={() => {
+                  services.loadSeedData()
+                  setToast({ message: 'Dados de exemplo carregados com sucesso!', tone: 'success' })
+                }}
+                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-on hover:bg-accent-hover"
+              >
+                Carregar Dados de Exemplo
+              </button>
             )}
           </div>
         </section>
       </div>
+
+      <Toast
+        message={toast?.message || ''}
+        tone={toast?.tone || 'success'}
+        onClose={() => setToast(null)}
+      />
     </div>
   )
 }

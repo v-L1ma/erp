@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useErp } from '../state/erp'
+import { useTheme } from '../state/theme'
 import { formatCurrencyShort, formatNumber } from '../utils/format'
 
 const navBase =
@@ -9,6 +10,7 @@ const navInactive = 'text-fg-2 hover:bg-surface hover:text-fg'
 
 export function Sidebar() {
   const { state } = useErp()
+  const { theme, toggle } = useTheme()
   const inventoryCount = formatNumber(state.products.length)
   const ordersCount = formatNumber(state.orders.length)
   const financeTotal = formatCurrencyShort(
@@ -121,6 +123,27 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      <div className="border-t border-border p-3 md:flex md:justify-center lg:block">
+        <button
+          onClick={toggle}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-fg-2 transition hover:bg-surface hover:text-fg md:w-auto md:justify-center lg:w-full lg:justify-start"
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+              <circle cx="12" cy="12" r="5" />
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          )}
+          <span className="md:hidden lg:inline">
+            {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+          </span>
+        </button>
+      </div>
     </aside>
   )
 }

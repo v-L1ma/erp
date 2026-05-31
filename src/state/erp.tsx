@@ -2,6 +2,7 @@ import type { Dispatch, ReactNode } from 'react'
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import type { ERPState, Order, OrderStatus, Product, Transaction } from './types'
 import { loadState, saveState } from './storage'
+import { seedData } from './seed'
 
 export type ProductInput = {
   name: string
@@ -10,6 +11,7 @@ export type ProductInput = {
   stock: number
   minStock: number
   price: number
+  image?: string
 }
 
 export type OrderItemInput = {
@@ -27,12 +29,26 @@ export type Result<T> =
   | { ok: true; data?: T }
   | { ok: false; message: string }
 
+export type TransactionInput = {
+  type: TransactionType
+  description: string
+  amount: number
+  category?: string
+  date?: string
+}
+
 export type ErpServices = {
   addProduct: (input: ProductInput) => Result<Product>
   updateProduct: (id: string, input: ProductInput) => Result<Product>
   deleteProduct: (id: string) => Result<null>
   createOrder: (input: CreateOrderInput) => Result<Order>
+  updateOrder: (id: string, input: CreateOrderInput) => Result<Order>
   updateOrderStatus: (id: string, status: OrderStatus) => Result<Order>
+  createTransaction: (input: TransactionInput) => Result<Transaction>
+  updateTransaction: (id: string, input: TransactionInput) => Result<Transaction>
+  deleteTransaction: (id: string) => Result<null>
+  cancelOrder: (id: string) => Result<Order>
+  loadSeedData: () => void
 }
 
 type ErpContextValue = {
@@ -45,6 +61,9 @@ type Action =
   | { type: 'product/add'; payload: Product }
   | { type: 'product/update'; payload: Product }
   | { type: 'product/delete'; payload: { id: string } }
+  | { type: 'transaction/add'; payload: Transaction }
+  | { type: 'transaction/update'; payload: Transaction }
+  | { type: 'transaction/delete'; payload: { id: string } }
 
 const ErpContext = createContext<ErpContextValue | undefined>(undefined)
 
@@ -75,6 +94,20 @@ function reducer(state: ERPState, action: Action): ERPState {
         ...state,
         products: state.products.filter((product) => product.id !== action.payload.id)
       }
+    case 'transaction/add':
+      return { ...state, transactions: [...state.transactions, action.payload] }
+    case 'transaction/update':
+      return {
+        ...state,
+        transactions: state.transactions.map((tx) =>
+          tx.id === action.payload.id ? action.payload : tx
+        )
+      }
+    case 'transaction/delete':
+      return {
+        ...state,
+        transactions: state.transactions.filter((tx) => tx.id !== action.payload.id)
+      }
     default:
       return state
   }
@@ -93,6 +126,7 @@ function createServices(state: ERPState, dispatch: Dispatch<Action>): ErpService
       stock: Math.max(0, safeNumber(input.stock)),
       minStock: Math.max(0, safeNumber(input.minStock, 5)),
       price: Math.max(0, safeNumber(input.price)),
+      image: input.image?.trim() || '',
       createdAt: new Date().toISOString()
     }
 
@@ -114,7 +148,8 @@ function createServices(state: ERPState, dispatch: Dispatch<Action>): ErpService
       category: input.category || 'Outros',
       stock: Math.max(0, safeNumber(input.stock)),
       minStock: Math.max(0, safeNumber(input.minStock, existing.minStock)),
-      price: Math.max(0, safeNumber(input.price))
+      price: Math.max(0, safeNumber(input.price)),
+      image: input.image?.trim() || existing.image || ''
     }
 
     dispatch({ type: 'product/update', payload: updated })
@@ -202,6 +237,81 @@ function createServices(state: ERPState, dispatch: Dispatch<Action>): ErpService
     return { ok: true, data: order }
   }
 
+  const updateOrder = (id: string, input: CreateOrderInput): Result<Order> => {
+    const existing = state.orders.find((entry) => entry.id === id)
+    if (!existing) return { ok: false, message: 'Pedido nao encontrado.' }
+    if (existing.status !== 'pendente') return { ok: false, message: 'So e possivel editar pedidos pendentes.' }
+
+    const customer = input.customer.trim()
+    if (!customer) return { ok: false, message: 'Informe o nome do cliente.' }
+
+    const filteredItems = input.items.filter(
+      (item) => item.productId && item.qty > 0
+    )
+    if (filteredItems.length === 0) {
+      return { ok: false, message: 'Adicione ao menos um item ao pedido.' }
+    }
+
+    const productMap = new Map(state.products.map((product) => [product.id, product]))
+    const orderItems = [] as Order['items']
+
+    for (const item of filteredItems) {
+      const product = productMap.get(item.productId)
+      if (!product) return { ok: false, message: 'Produto nao encontrado.' }
+
+      const oldQty = existing.items.find((ei) => ei.productId === item.productId)?.qty || 0
+      const availableStock = product.stock + oldQty
+
+      if (item.qty > availableStock) {
+        return {
+          ok: false,
+          message: `Estoque insuficiente para ${product.name} (disponivel: ${availableStock}).`
+        }
+      }
+
+      orderItems.push({
+        productId: product.id,
+        name: product.name,
+        qty: item.qty,
+        price: product.price
+      })
+    }
+
+    const total = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0)
+
+    const updatedProducts = state.products.map((product) => {
+      const oldItem = existing.items.find((ei) => ei.productId === product.id)
+      const newItem = orderItems.find((entry) => entry.productId === product.id)
+      let stock = product.stock
+      if (oldItem) stock += oldItem.qty
+      if (newItem) stock -= newItem.qty
+      return { ...product, stock: Math.max(0, stock) }
+    })
+
+    const updatedOrders = state.orders.map((entry) =>
+      entry.id === id
+        ? { ...entry, customer, items: orderItems, total, payment: input.payment }
+        : entry
+    )
+
+    const updatedTransactions = state.transactions.map((tx) => {
+      if (tx.orderId !== id) return tx
+      return { ...tx, description: `Venda #${id} - ${customer}`, amount: total }
+    })
+
+    dispatch({
+      type: 'state/replace',
+      payload: {
+        ...state,
+        products: updatedProducts,
+        orders: updatedOrders,
+        transactions: updatedTransactions
+      }
+    })
+
+    return { ok: true, data: { ...existing, customer, items: orderItems, total, payment: input.payment } }
+  }
+
   const updateOrderStatus = (id: string, status: OrderStatus): Result<Order> => {
     const order = state.orders.find((entry) => entry.id === id)
     if (!order) return { ok: false, message: 'Pedido nao encontrado.' }
@@ -225,7 +335,97 @@ function createServices(state: ERPState, dispatch: Dispatch<Action>): ErpService
     return { ok: true, data: updatedOrder }
   }
 
-  return { addProduct, updateProduct, deleteProduct, createOrder, updateOrderStatus }
+  const cancelOrder = (id: string): Result<Order> => {
+    const order = state.orders.find((entry) => entry.id === id)
+    if (!order) return { ok: false, message: 'Pedido nao encontrado.' }
+    if (order.status === 'cancelado') return { ok: false, message: 'Pedido ja esta cancelado.' }
+    if (order.status === 'entregue') return { ok: false, message: 'Pedido ja foi entregue, nao pode ser cancelado.' }
+
+    const updatedProducts = state.products.map((product) => {
+      const item = order.items.find((entry) => entry.productId === product.id)
+      if (!item) return product
+      return { ...product, stock: product.stock + item.qty }
+    })
+
+    const updatedOrders = state.orders.map((entry) =>
+      entry.id === id ? { ...entry, status: 'cancelado' as const } : entry
+    )
+
+    const updatedTransactions = state.transactions.map((tx) => {
+      if (tx.orderId !== id) return tx
+      return { ...tx, status: 'pendente' }
+    })
+
+    dispatch({
+      type: 'state/replace',
+      payload: {
+        ...state,
+        products: updatedProducts,
+        orders: updatedOrders,
+        transactions: updatedTransactions
+      }
+    })
+
+    return { ok: true, data: { ...order, status: 'cancelado' } }
+  }
+
+  const createTransaction = (input: TransactionInput): Result<Transaction> => {
+    const description = input.description.trim()
+    if (!description) return { ok: false, message: 'Informe a descricao.' }
+
+    const amount = safeNumber(input.amount)
+    if (amount <= 0) return { ok: false, message: 'O valor deve ser maior que zero.' }
+
+    const transaction: Transaction = {
+      id: createId('tx'),
+      type: input.type,
+      description,
+      amount,
+      category: input.category || 'Outros',
+      date: input.date || new Date().toISOString(),
+      status: 'pago'
+    }
+
+    dispatch({ type: 'transaction/add', payload: transaction })
+    return { ok: true, data: transaction }
+  }
+
+  const updateTransaction = (id: string, input: TransactionInput): Result<Transaction> => {
+    const existing = state.transactions.find((tx) => tx.id === id)
+    if (!existing) return { ok: false, message: 'Movimentacao nao encontrada.' }
+
+    const description = input.description.trim()
+    if (!description) return { ok: false, message: 'Informe a descricao.' }
+
+    const amount = safeNumber(input.amount)
+    if (amount <= 0) return { ok: false, message: 'O valor deve ser maior que zero.' }
+
+    const updated: Transaction = {
+      ...existing,
+      type: input.type,
+      description,
+      amount,
+      category: input.category || 'Outros',
+      date: input.date || existing.date,
+      status: input.type === 'receita' ? 'pago' : 'pago'
+    }
+
+    dispatch({ type: 'transaction/update', payload: updated })
+    return { ok: true, data: updated }
+  }
+
+  const deleteTransaction = (id: string): Result<null> => {
+    const existing = state.transactions.find((tx) => tx.id === id)
+    if (!existing) return { ok: false, message: 'Movimentacao nao encontrada.' }
+    dispatch({ type: 'transaction/delete', payload: { id } })
+    return { ok: true, data: null }
+  }
+
+  const loadSeedData = () => {
+    dispatch({ type: 'state/replace', payload: seedData })
+  }
+
+  return { addProduct, updateProduct, deleteProduct, createOrder, updateOrder, updateOrderStatus, cancelOrder, createTransaction, updateTransaction, deleteTransaction, loadSeedData }
 }
 
 export function ErpProvider({ children }: { children: ReactNode }) {

@@ -16,6 +16,8 @@ export function SalesPage() {
   const [customer, setCustomer] = useState('')
   const [payment, setPayment] = useState('Boleto')
   const [items, setItems] = useState<OrderItemForm[]>([emptyItem])
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
 
   const productMap = useMemo(() => {
@@ -45,19 +47,45 @@ export function SalesPage() {
     setItems((prev) => prev.filter((_, idx) => idx !== index))
   }
 
+  const openEdit = (id: string) => {
+    const order = state.orders.find((entry) => entry.id === id)
+    if (!order) return
+    setEditingOrderId(id)
+    setCustomer(order.customer)
+    setPayment(order.payment)
+    setItems(order.items.map((item) => ({ productId: item.productId, qty: item.qty })))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const clearForm = () => {
+    setEditingOrderId(null)
     setCustomer('')
     setPayment('Boleto')
     setItems([emptyItem])
   }
 
-  const handleCreateOrder = () => {
-    const result = services.createOrder({ customer, payment, items })
+  const handleCancelOrder = (id: string) => {
+    if (!window.confirm('Cancelar este pedido? O estoque sera restaurado.')) return
+    const result = services.cancelOrder(id)
     if (!result.ok) {
       setToast({ message: result.message, tone: 'error' })
       return
     }
-    setToast({ message: `Pedido #${result.data?.id} criado com sucesso!`, tone: 'success' })
+    setToast({ message: `Pedido #${id} cancelado. Estoque restaurado.`, tone: 'success' })
+  }
+
+  const handleCreateOrder = () => {
+    const result = editingOrderId
+      ? services.updateOrder(editingOrderId, { customer, payment, items })
+      : services.createOrder({ customer, payment, items })
+    if (!result.ok) {
+      setToast({ message: result.message, tone: 'error' })
+      return
+    }
+    const msg = editingOrderId
+      ? `Pedido #${editingOrderId} atualizado com sucesso!`
+      : `Pedido #${result.data?.id} criado com sucesso!`
+    setToast({ message: msg, tone: 'success' })
     clearForm()
   }
 
@@ -83,7 +111,17 @@ export function SalesPage() {
 
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
         <div className="panel-card p-5">
-          <h3 className="text-sm font-semibold">Novo Pedido</h3>
+          <h3 className="text-sm font-semibold">
+            {editingOrderId ? `Editando Pedido #${editingOrderId}` : 'Novo Pedido'}
+          </h3>
+          {editingOrderId && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-warn">Editando pedido existente</span>
+              <button onClick={clearForm} className="text-xs text-muted underline">
+                Cancelar edicao
+              </button>
+            </div>
+          )}
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div>
               <label className="text-xs text-muted">Cliente</label>
@@ -236,14 +274,36 @@ export function SalesPage() {
                             {formatDate(order.date)}
                           </td>
                           <td className="px-3 py-3">
-                            {order.status === 'pendente' && (
+                            <div className="flex flex-wrap gap-1">
                               <button
-                                onClick={() => handleUpdateStatus(order.id)}
-                                className="rounded-md border border-border px-3 py-1 text-xs font-medium"
+                                onClick={() => setDetailOrderId(order.id)}
+                                className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:border-fg"
                               >
-                                Entregar
+                                Ver
                               </button>
-                            )}
+                              {order.status === 'pendente' && (
+                                <>
+                                  <button
+                                    onClick={() => openEdit(order.id)}
+                                    className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:border-fg"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdateStatus(order.id)}
+                                    className="rounded-md border border-border px-2 py-1 text-xs font-medium"
+                                  >
+                                    Entregar
+                                  </button>
+                                  <button
+                                    onClick={() => handleCancelOrder(order.id)}
+                                    className="rounded-md border border-danger px-2 py-1 text-xs font-medium text-danger"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )
@@ -254,6 +314,88 @@ export function SalesPage() {
           </div>
         </div>
       </div>
+
+      {detailOrderId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setDetailOrderId(null)
+          }}
+        >
+          {(() => {
+            const order = state.orders.find((entry) => entry.id === detailOrderId)
+            if (!order) return null
+            const statusClass =
+              order.status === 'entregue' || order.status === 'pago'
+                ? 'ok'
+                : order.status === 'pendente'
+                  ? 'pending'
+                  : 'danger'
+            return (
+              <div className="w-full max-w-lg rounded-lg bg-base p-6 shadow-raised">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Pedido #{order.id}</h2>
+                  <button
+                    onClick={() => setDetailOrderId(null)}
+                    className="rounded-md border border-border px-2 py-1 text-xs"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted">Cliente</span>
+                    <span className="font-medium">{order.customer}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Pagamento</span>
+                    <span>{order.payment}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Status</span>
+                    <span className={`status-tag ${statusClass}`}>{order.status}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Data</span>
+                    <span>{formatDate(order.date)}</span>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                    Itens
+                  </h4>
+                  <table className="mt-2 w-full text-left text-sm">
+                    <thead className="text-[11px] uppercase text-muted">
+                      <tr>
+                        <th className="py-1 pr-2">Produto</th>
+                        <th className="py-1 px-2 text-right">Qtd</th>
+                        <th className="py-1 px-2 text-right">Preco</th>
+                        <th className="py-1 pl-2 text-right">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-soft">
+                      {order.items.map((item) => (
+                        <tr key={item.productId}>
+                          <td className="py-2 pr-2">{item.name}</td>
+                          <td className="py-2 px-2 text-right font-mono">{item.qty}</td>
+                          <td className="py-2 px-2 text-right font-mono">{formatCurrency(item.price)}</td>
+                          <td className="py-2 pl-2 text-right font-mono">{formatCurrency(item.price * item.qty)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border font-semibold">
+                        <td colSpan={3} className="py-2 pr-2 text-right">Total</td>
+                        <td className="py-2 pl-2 text-right font-mono">{formatCurrency(order.total)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
 
       <Toast
         message={toast?.message || ''}
