@@ -27,15 +27,15 @@ export function OverviewPage() {
 
   return (
     <div className="min-h-screen">
-      <PageHeader title="Visao Geral" meta="vendedores - OpenGest ERP" />
+      <PageHeader title="Geral" meta="vendedores - ERP TOTVS" />
 
       <div className="mx-auto w-full max-w-6xl px-6 py-6">
         <section className="mb-8">
-          <h1 className="text-2xl font-semibold text-fg">OpenGest ERP</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="text-2xl font-semibold text-fg">ERP TOTVS</h1>
+          {/* <p className="mt-1 text-sm text-muted">
             Sistema de gestao empresarial com modulos integrados. Selecione um
             modulo para comecar.
-          </p>
+          </p> */}
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">

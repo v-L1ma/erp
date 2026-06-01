@@ -90,7 +90,7 @@ export function Sidebar() {
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <path d="M3 9h18M9 3v18" />
         </svg>
-        <span className="text-base font-semibold md:hidden lg:inline">OpenGest</span>
+        <span className="text-base font-semibold md:hidden lg:inline">ERP TOTVS</span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-2 py-4">
